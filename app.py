@@ -109,26 +109,134 @@ def gemini(messages):
 
 def run_agent(email):
     ensure_seed(email)
-    history=[{'objective':'Investigate this reported email, assess exposure, perform authorized simulated response, verify results.','email':email}]
-    trace=[]; used=set(); model=''
+
+    history = [{
+        'objective': (
+            'Investigate this reported email, assess exposure, '
+            'perform authorized simulated response, verify results.'
+        ),
+        'email': email
+    }]
+
+    trace = []
+    used = set()
+    model = ''
+    completed = False
+
     for step in range(12):
-        choice,model=gemini(history)
+
+        # STEP 1: Ask Gemini to select the next action
+        choice, model = gemini(history)
+
         if not choice:
-            trace.append({'step':step+1,'tool':'ERROR','result':model});break
-        name=choice.get('tool','finish');args=choice.get('args',{})
-        if name=='finish':
-            trace.append({'step':step+1,'tool':'FINISH','result':'Agent stopped'});break
-        if name not in TOOLS or name in used or not isinstance(args,dict):
-            history.append({'tool_request':name,'result':{'error':'Invalid or repeated tool; choose a different next action or finish'}})
+            trace.append({
+                'step': step + 1,
+                'tool': 'ERROR',
+                'result': model
+            })
+            break
+
+        name = choice.get('tool', 'finish')
+        args = choice.get('args', {})
+
+        # STEP 2: Check whether the agent wants to finish
+        if name == 'finish':
+
+            # Verification must happen before completion
+            if 'verify_response' not in used:
+                history.append({
+                    'tool_request': 'finish',
+                    'result': {
+                        'error': 'Verification required before completion.',
+                        'instruction': 'Call verify_response before finishing.'
+                    }
+                })
+                continue
+
+            trace.append({
+                'step': step + 1,
+                'tool': 'FINISH',
+                'result': 'Investigation completed after verification'
+            })
+
+            completed = True
+            break
+
+        # STEP 3: Validate the selected tool
+        if name not in TOOLS or name in used or not isinstance(args, dict):
+            history.append({
+                'tool_request': name,
+                'result': {
+                    'error': (
+                        'Invalid or repeated tool. '
+                        'Choose a different next action or finish.'
+                    )
+                }
+            })
             continue
-        # Enforce essential evidence collection before decisions and verify before finish where possible.
-        if name=='create_incident' and not {'inspect_email','audit_exposure'}.issubset(used):
-            history.append({'tool_request':name,'result':{'error':'Inspect email and audit exposure before creating incident'}});continue
-        result=tool_call(name,email,args)
-        used.add(name)
-        trace.append({'step':step+1,'tool':name,'result':json.dumps(result,ensure_ascii=False)})
-        history.append({'tool_request':name,'args':args,'result':result})
-    return trace,model
+
+        # STEP 4: Enforce mandatory investigation requirements
+        if name == 'create_incident':
+            required = {'inspect_email', 'audit_exposure'}
+
+            if not required.issubset(used):
+                history.append({
+                    'tool_request': name,
+                    'result': {
+                        'error': (
+                            'Inspect email and audit exposure '
+                            'before creating an incident.'
+                        )
+                    }
+                })
+                continue
+
+        # STEP 5: Execute the tool selected by Gemini
+        try:
+            result = tool_call(name, email, args)
+
+        except Exception as e:
+            result = {
+                'success': False,
+                'error': str(e)
+            }
+
+        # STEP 6: Record execution results
+        trace.append({
+            'step': step + 1,
+            'tool': name,
+            'result': json.dumps(result, ensure_ascii=False)
+        })
+
+        # STEP 7: Return the tool result to Gemini
+        history.append({
+            'tool_request': name,
+            'args': args,
+            'result': result
+        })
+
+        # STEP 8: Track successful tool execution
+        if not (
+            isinstance(result, dict)
+            and (
+                result.get('success') is False
+                or result.get('error')
+            )
+        ):
+            used.add(name)
+
+    # STEP 9: Report incomplete investigations
+    if not completed:
+        trace.append({
+            'step': len(trace) + 1,
+            'tool': 'INCOMPLETE',
+            'result': (
+                'The agent stopped before verified completion. '
+                'Review the execution log and outstanding actions.'
+            )
+        })
+
+    return trace, model
 
 st.title('🛡️ PhishGuard AI')
 st.caption('Autonomous phishing investigation • simulated enterprise environment • human-governed containment')
