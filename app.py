@@ -536,7 +536,7 @@ st.markdown(CSS, unsafe_allow_html=True)
 SHIELD = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8CC1FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>'
 
 with st.sidebar:
-    st.image(str(Path(__file__).parent / "assets" / "phishagent_logo.png"), use_container_width=True)
+    st.image(str(Path(__file__).parent /"phishagent_logo.png"), use_container_width=True)
     st.caption("ENTERPRISE SECURITY OPERATIONS")
     st.divider()
     nav = {"Investigate": ":material/search:", "SOC Dashboard": ":material/monitoring:", "Agent Audit Trail": ":material/history:", "Agent Performance & Testing": ":material/experiment:"}
